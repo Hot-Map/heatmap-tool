@@ -56,33 +56,31 @@ def download(url:str):
     video_type.download(download_dir, filename=f"{title}.mp4")
     try:
         heatmap = get_heatmap(video=url)
-        heatmap.to_csv(f"{download_dir}/{title}.csv", index=False)
+        heatmap.to_csv(f"{download_dir}/{title}_raw.csv", index=False)
     except Exception as e:
         st.write(f"Heatmap is not available for this video.")
 
-def transfrom_data(path:str):
+def process_data(path:str):
     video_path = f"data/{path}.mp4"
     
     cap = cv2.VideoCapture(video_path)
     frame_rate = cap.get(cv2.CAP_PROP_FPS)
+    
+    n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    #print(path, n_frames)
 
-    heat_map = pd.read_csv(f"data/{path}.csv")
 
-    frame_num = 0
+    heat_map = pd.read_csv(f"data/{path}_raw.csv")
+
     results = []
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-
+    for frame_num in range(0, n_frames):
         time_ms = frame_num * (1000 / frame_rate)
         rows = heat_map[(heat_map['timeRangeStartMillis'] <= time_ms) & (time_ms < heat_map['timeRangeStartMillis'] + heat_map['markerDurationMillis'])]
         avg_heat = rows['heatMarkerIntensityScoreNormalized'].mean()
         results.append([frame_num, avg_heat])
-        frame_num += 1
 
-    results_df = pd.DataFrame(results, columns=['frame_num', 'heat'])
-    results_df.to_csv(f"data/{path}_heatmap_final.csv",index=False)
+    results_df = pd.DataFrame(results, columns=['Frame', 'Heat'])
+    results_df.to_csv(f"data/{path}_heatmap.csv",index=False)
 
     st.write(path," Frame rate: ", frame_rate)
 
@@ -117,13 +115,13 @@ def main():
                 progress_status.text(f"Downloading...  {idx+1}/{len(url_list)} Done")
 
     if st.button("Transform"):
-        csv_files = glob.glob('data/*.csv')
+        csv_files = glob.glob('data/*_raw.csv')
         files = []
 
         for file_path in csv_files:
             file = os.path.basename(file_path)
-            file = os.path.splitext(file)[0]
-            transfrom_data(file)
+            file = os.path.splitext(file)[0][:-4]
+            process_data(file)
             files.append(file)
 
         st.write(files)
