@@ -9,6 +9,11 @@ import pandas as pd
 import streamlit as st
 from pytube import YouTube
 from bs4 import BeautifulSoup
+from generate_dataset import GenerateDataset
+import base64
+import h5py
+import numpy as np
+
 
 invalid_chars = '<>:"/\\|?*'
 download_dir = 'data'
@@ -39,7 +44,9 @@ def get_heatmap(video:str):
     df = pd.DataFrame(heatmap).T
     return df
 
-def download(url:str):
+def download(url:str, filename):
+    video_id = url.replace("https://www.youtube.com/watch?v=", "")
+    
     video = YouTube(url, on_progress_callback=progress_function)
     video_type = video.streams.filter(progressive = True, file_extension = "mp4").get_highest_resolution()
     global file_size
@@ -53,14 +60,14 @@ def download(url:str):
     st.write(f"file_size {format_bytes(file_size)}")
     global progress_bar
     progress_bar = st.progress(0)
-    video_type.download(download_dir, filename=f"{title}.mp4")
+    video_type.download(download_dir, filename=f"{filename}.mp4")
     try:
         heatmap = get_heatmap(video=url)
-        heatmap.to_csv(f"{download_dir}/{title}.csv", index=False)
+        heatmap.to_csv(f"{download_dir}/{filename}.csv", index=False)
     except Exception as e:
         st.write(f"Heatmap is not available for this video.")
 
-def transfrom_data(path:str):
+def process_data(path:str):
     video_path = f"data/{path}.mp4"
     
     cap = cv2.VideoCapture(video_path)
@@ -87,6 +94,21 @@ def transfrom_data(path:str):
     st.write(path," Frame rate: ", frame_rate)
 
 
+def create_h5():
+    data_dir = 'data'
+    output_h5 = 'dataset.h5'
+    gen = GenerateDataset(data_dir, output_h5, 100)
+    gen.generate_dataset()
+    gen.h5_file.close()
+    
+
+def get_binary_file_downloader_html(bin_file, file_label='File'):
+    with open(bin_file, 'rb') as f:
+        data = f.read()
+    bin_str = base64.b64encode(data).decode()
+    href = f'<a href="data:application/octet-stream;base64,{bin_str}" download="{os.path.basename(bin_file)}">{file_label}</a>'
+    return href
+
 def main():
     st.title("Get Youtube's Most Replayed Heatmap")
 
@@ -102,7 +124,7 @@ def main():
     if st.button("Download"):
         if url_list is None:
             url = video_id if "https://www.youtube.com/watch?v=" in video_id else "https://www.youtube.com/watch?v=" + video_id
-            download(url)
+            download(url, 1)
         else:
             total_progress_bar = st.progress(0)
             progress_status = st.text(f"Downloading...  0/{len(url_list)} Done")
@@ -111,22 +133,19 @@ def main():
                 with st.container():
                     st.markdown("""---""")
                     st.write(url)
-                    download(url)
+                    download(url, idx+1)
                     st.markdown("""---""")
                 total_progress_bar.progress(int((idx+1)*100/len(url_list)))
                 progress_status.text(f"Downloading...  {idx+1}/{len(url_list)} Done")
 
-    if st.button("Transform"):
+    if st.button("Process"):
         csv_files = glob.glob('data/*.csv')
         files = []
+        import time
+        time.sleep(1)
 
-        for file_path in csv_files:
-            file = os.path.basename(file_path)
-            file = os.path.splitext(file)[0]
-            transfrom_data(file)
-            files.append(file)
-
-        st.write(files)
+       
+        st.markdown(get_binary_file_downloader_html("dataset.h5", 'Click here to download'), unsafe_allow_html=True)
         
 
 
